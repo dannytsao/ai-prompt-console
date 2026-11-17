@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="robots" content="noindex, nofollow, noarchive" />
+  <title>AI 互動式指令控制台</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.tailwindcss.com';document.head.appendChild(s);"></script>
+  <style>
+    /* 隱藏水平捲軸但保留手機觸控滑動 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* 手機觸控優化 */
+    button, select, input, label {
+      -webkit-tap-highlight-color: transparent;
+    }
+    select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      background-size: 1rem;
+      padding-right: 2.25rem;
+    }
+  </style>
+</head>
+<body class="bg-transparent text-[var(--foreground)] antialiased p-0 m-0">
+  <!-- PIN 碼解鎖畫面（預設顯示，驗證通過後隱藏並顯示主控台） -->
+  <div id="pin-gate" class="w-full max-w-sm mx-auto py-3 px-2">
+    <div class="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 sm:p-5 space-y-3.5 shadow-sm text-center">
+      <div class="space-y-1">
+        <div class="text-2xl">🔐</div>
+        <h1 class="text-base font-bold text-[var(--foreground)]">專屬操作控制台已鎖定</h1>
+        <p class="text-xs text-[var(--muted-foreground)]">請輸入 4 位數專屬 PIN 碼解鎖使用</p>
+      </div>
+
+      <!-- 4 位數圓點指示器 -->
+      <div id="pin-dots" class="flex items-center justify-center gap-3 py-1" aria-label="PIN 碼輸入進度">
+        <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
+        <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
+        <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
+        <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
+      </div>
+
+      <div id="pin-error" class="min-h-[18px] text-xs font-medium text-[var(--error)]"></div>
+
+      <!-- 手機大觸控 0-9 數字鍵盤 -->
+      <div id="pin-keypad" class="grid grid-cols-3 gap-2 max-w-[260px] mx-auto"></div>
+
+      <label class="inline-flex items-center justify-center gap-2 text-xs text-[var(--muted-foreground)] cursor-pointer select-none pt-1">
+        <input id="pin-remember" type="checkbox" checked class="w-4 h-4 rounded accent-[var(--primary)]" />
+        <span>在這支手機記住解鎖狀態（下次直接秒開）</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- 主控制台畫面（解鎖後顯示） -->
+  <div id="app" class="hidden w-full max-w-2xl mx-auto py-2 px-1 space-y-3">
+    <!-- 頂部工具列：標題、鎖定專屬模式與管理按鈕 -->
+    <header class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--card-border)]">
+      <div class="flex items-center gap-2 min-w-0">
+        <span id="header-badge" class="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-semibold bg-[var(--secondary)] text-[var(--secondary-foreground)] border border-[var(--card-border)]">
+          🎛️ 互動控制台
+        </span>
+        <span id="lock-indicator" class="hidden text-xs font-medium text-[var(--primary)] truncate">
+          📌 專屬模式
+        </span>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <button
+          id="btn-toggle-pin"
+          type="button"
+          class="min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--card-border)] bg-[var(--card)] text-[var(--foreground)] hover:opacity-90 active:scale-[0.98] transition flex items-center gap-1"
+          title="將目前功能鎖定為專屬聊天室視窗，或檢視開局建立指令"
+        >
+          📌 專屬聊天室
+        </button>
+        <button
+          id="btn-toggle-edit"
+          type="button"
+          class="min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--card-border)] bg-[var(--card)] text-[var(--foreground)] hover:opacity-90 active:scale-[0.98] transition flex items-center gap-1"
+        >
+          ✏️ 修改選項
+        </button>
+        <button
+          id="btn-toggle-add-module"
+          type="button"
+          class="min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--card-border)] bg-[var(--card)] text-[var(--foreground)] hover:opacity-90 active:scale-[0.98] transition flex items-center gap-1"
+        >
+          ➕ 擴增功能
+        </button>
+        <button
+          id="btn-toggle-security"
+          type="button"
+          class="min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--card-border)] bg-[var(--card)] text-[var(--foreground)] hover:opacity-90 active:scale-[0.98] transition flex items-center gap-1"
+        >
+          🔒 PIN 設定
+        </button>
+      </div>
+    </header>
+
+    <!-- PIN 碼安全管理面板（預設收合） -->
+    <section id="security-panel" class="hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-3 space-y-2.5">
+      <div class="flex items-start justify-between gap-2 pb-1.5 border-b border-[var(--card-border)]">
+        <div>
+          <h2 class="text-sm font-semibold text-[var(--foreground)]">🔒 PIN 碼安全鎖設定</h2>
+          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">
+            自訂後的 PIN 碼會儲存在目前裝置瀏覽器中；若更換新裝置，將使用初始預設 PIN。
+          </p>
+        </div>
+        <button id="btn-close-security" type="button" class="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] px-2 py-1">✕</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button
+          id="btn-lock-now"
+          type="button"
+          class="min-h-[40px] px-3 py-2 rounded-lg text-xs font-semibold border border-[var(--card-border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] hover:opacity-90 transition"
+        >
+          🔒 立即上鎖並清除本機自動登入
+        </button>
+        <button
+          id="btn-reset-default-pin"
+          type="button"
+          class="min-h-[40px] px-3 py-2 rounded-lg text-xs font-medium border border-[var(--card-border)] bg-[var(--content)] text-[var(--foreground)] hover:opacity-90 transition"
+        >
+          ↩️ 恢復初始預設 PIN 碼
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2 pt-1">
+        <input
+          id="new-pin-input"
+          type="password"
+          inputmode="numeric"
+          maxlength="4"
+          pattern="[0-9]*"
+          placeholder="輸入新的 4 位數字 PIN 碼"
+          class="flex-1 min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-3 py-1.5 text-sm tracking-widest"
+        />
+        <button
+          id="btn-save-pin"
+          type="button"
+          class="min-h-[40px] px-3.5 py-2 rounded-lg text-xs font-semibold bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 shrink-0"
+        >
+          儲存新 PIN
+        </button>
+      </div>
+      <div id="security-msg" class="text-xs text-[var(--muted-foreground)] min-h-[16px]"></div>
+    </section>
+
+    <!-- 功能分頁列（鎖定單一專屬模式時自動收合為單一橫幅） -->
+    <nav id="module-tabs-wrap" aria-label="功能切換">
+      <div id="module-tabs" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+        <!-- JS 動態渲染 -->
+      </div>
+    </nav>
+
+    <!-- 專屬聊天室釘選說明與開局指令面板（預設收合） -->
+    <section id="pin-panel" class="hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-3 space-y-2.5">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <h2 class="text-sm font-semibold text-[var(--foreground)] flex items-center gap-1.5">
+            📌 專屬聊天室釘選與開局設定
+          </h2>
+          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">
+            建議為這 5 種常用功能各開一個獨立聊天室並「釘選」在側邊欄，需要哪一套就打開哪一套！
+          </p>
+        </div>
+        <button id="btn-close-pin" type="button" class="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] px-2 py-1">✕</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button
+          id="btn-lock-current"
+          type="button"
+          class="min-h-[40px] px-3 py-2 rounded-lg text-xs font-medium border border-[var(--card-border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] hover:opacity-90 transition text-left flex items-center justify-between"
+        >
+          <span id="lock-btn-label">🔒 鎖定為目前功能的專屬介面</span>
+        </button>
+        <button
+          id="btn-copy-room-init"
+          type="button"
+          class="min-h-[40px] px-3 py-2 rounded-lg text-xs font-semibold bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 transition text-center"
+        >
+          📋 複製此聊天室「開局設定指令」
+        </button>
+      </div>
+
+      <div class="rounded-lg border border-[var(--card-border)] bg-[var(--content)] p-2.5 text-xs text-[var(--muted-foreground)] space-y-1">
+        <div class="font-medium text-[var(--foreground)]">建議聊天室名稱：<span id="suggested-room-name" class="text-[var(--primary)]"></span></div>
+        <div id="room-init-preview" class="whitespace-pre-wrap leading-relaxed"></div>
+      </div>
+    </section>
+
+    <!-- 編輯目前功能選項面板（預設收合） -->
+    <section id="edit-panel" class="hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-3 space-y-3">
+      <div class="flex items-center justify-between gap-2 pb-2 border-b border-[var(--card-border)]">
+        <h2 class="text-sm font-semibold text-[var(--foreground)]">
+          ✏️ 修改與擴增「<span id="edit-module-name"></span>」選項
+        </h2>
+        <button id="btn-close-edit" type="button" class="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] px-2 py-1">✕</button>
+      </div>
+
+      <div id="edit-fields-list" class="space-y-2.5">
+        <!-- JS 動態渲染各欄位選項編輯器 -->
+      </div>
+
+      <!-- 在目前模組新增一個控制欄位 -->
+      <div class="pt-2 border-t border-[var(--card-border)] space-y-2">
+        <div class="text-xs font-semibold text-[var(--foreground)]">➕ 為此功能新增欄位（下拉選單或單選按鈕）</div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <select id="new-field-type" class="min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-xs">
+            <option value="select">下拉式選單</option>
+            <option value="radio">單選按鈕群組</option>
+          </select>
+          <input id="new-field-label" type="text" placeholder="欄位名稱（例如：濾鏡風格）" class="min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-xs" />
+          <input id="new-field-options" type="text" placeholder="選項請用逗號分隔（例：日系,復古,冷調）" class="min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-xs" />
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <button id="btn-add-field" type="button" class="min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90">
+            ＋ 加入此欄位
+          </button>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button id="btn-export-json" type="button" class="min-h-[34px] px-2.5 py-1 rounded-lg text-xs border border-[var(--card-border)] bg-[var(--secondary)] text-[var(--secondary-foreground)]">
+              匯出設定 JSON
+            </button>
+            <button id="btn-toggle-import" type="button" class="min-h-[34px] px-2.5 py-1 rounded-lg text-xs border border-[var(--card-border)] bg-[var(--secondary)] text-[var(--secondary-foreground)]">
+              匯入 JSON
+            </button>
+            <button id="btn-reset-confirm-ask" type="button" class="min-h-[34px] px-2.5 py-1 rounded-lg text-xs border border-[var(--card-border)] text-[var(--error)] bg-[var(--content)]">
+              恢復預設
+            </button>
+          </div>
+        </div>
+        <!-- 匯出/匯入文字區與恢復預設二次確認 -->
+        <div id="reset-confirm-box" class="hidden flex items-center justify-between gap-2 p-2 rounded-lg border border-[var(--card-border)] bg-[var(--content)] text-xs">
+          <span class="text-[var(--error)] font-medium">確定要清除所有自訂修改，恢復出廠預設五大功能嗎？</span>
+          <div class="flex items-center gap-1.5">
+            <button id="btn-reset-yes" type="button" class="px-2.5 py-1 rounded bg-[var(--error)] text-[var(--primary-foreground)] font-semibold">確定重置</button>
+            <button id="btn-reset-no" type="button" class="px-2.5 py-1 rounded border border-[var(--card-border)]">取消</button>
+          </div>
+        </div>
+        <div id="json-io-box" class="hidden space-y-1.5 pt-1">
+          <textarea id="json-io-text" rows="3" placeholder="貼上設定 JSON 以匯入，或複製上方匯出的 JSON..." class="w-full rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] p-2 text-xs font-mono"></textarea>
+          <div class="flex items-center gap-2">
+            <button id="btn-apply-import" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--primary)] text-[var(--primary-foreground)]">套用匯入設定</button>
+            <span id="json-io-msg" class="text-xs text-[var(--muted-foreground)]"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 擴增新功能模組面板（預設收合） -->
+    <section id="add-module-panel" class="hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-3 space-y-2.5">
+      <div class="flex items-center justify-between gap-2 pb-1.5 border-b border-[var(--card-border)]">
+        <h2 class="text-sm font-semibold text-[var(--foreground)]">➕ 擴增全新功能模組</h2>
+        <button id="btn-close-add-module" type="button" class="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] px-2 py-1">✕</button>
+      </div>
+      <div class="grid grid-cols-4 gap-2">
+        <div class="col-span-1">
+          <label class="block text-xs text-[var(--muted-foreground)] mb-1">圖示</label>
+          <input id="new-mod-icon" type="text" value="✨" maxlength="4" class="w-full min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-sm text-center" />
+        </div>
+        <div class="col-span-3">
+          <label class="block text-xs text-[var(--muted-foreground)] mb-1">功能名稱</label>
+          <input id="new-mod-name" type="text" placeholder="例如：英文寫作潤飾、健身菜單設計" class="w-full min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-sm" />
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs text-[var(--muted-foreground)] mb-1">下拉選單 1 名稱與選項（名稱：選項1,選項2）</label>
+          <input id="new-mod-select1" type="text" value="目標風格：專業商務,親切自然,學術嚴謹" class="w-full min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-xs" />
+        </div>
+        <div>
+          <label class="block text-xs text-[var(--muted-foreground)] mb-1">下拉選單 2 名稱與選項</label>
+          <input id="new-mod-select2" type="text" value="輸出篇幅：精簡重點,標準完整,詳細深度解析" class="w-full min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-xs" />
+        </div>
+        <div>
+          <label class="block text-xs text-[var(--muted-foreground)] mb-1">單選按鈕 1 名稱與選項</label>
+          <input id="new-mod-radio1" type="text" value="呈現格式：條列式重點,完整段落,比較表格" class="w-full min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-xs" />
+        </div>
+        <div>
+          <label class="block text-xs text-[var(--muted-foreground)] mb-1">單選按鈕 2 名稱與選項</label>
+          <input id="new-mod-radio2" type="text" value="語氣設定：繁體中文（台灣用語）,中英雙語對照" class="w-full min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-xs" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-[var(--muted-foreground)] mb-1">AI 角色定位說明（將納入合成指令開頭）</label>
+        <input id="new-mod-role" type="text" placeholder="例如：請擔任資深領域顧問，依據以下條件提供可直接執行的具體方案。" class="w-full min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-2.5 py-1.5 text-xs" />
+      </div>
+      <div class="flex items-center justify-between gap-2 pt-1">
+        <span id="add-mod-error" class="text-xs text-[var(--error)]"></span>
+        <button id="btn-create-module" type="button" class="min-h-[40px] px-4 py-2 rounded-lg text-xs font-semibold bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90">
+          ✅ 建立並切換到此功能
+        </button>
+      </div>
+    </section>
+
+    <!-- 主控操作表單區 -->
+    <main class="space-y-3">
+      <!-- 目前功能標題與簡介 -->
+      <div class="flex items-center justify-between gap-2 px-1">
+        <div class="min-w-0">
+          <h1 id="active-title" class="text-base font-bold text-[var(--foreground)] flex items-center gap-1.5 truncate"></h1>
+          <p id="active-desc" class="text-xs text-[var(--muted-foreground)] mt-0.5"></p>
+        </div>
+        <button
+          id="btn-delete-custom-mod"
+          type="button"
+          class="hidden shrink-0 px-2 py-1 rounded-md text-xs text-[var(--error)] border border-[var(--card-border)] bg-[var(--card)]"
+        >
+          刪除模組
+        </button>
+      </div>
+
+      <!-- 下拉式選單區 + 單選按鈕區 + 補充說明 -->
+      <div id="controls-container" class="space-y-3">
+        <!-- JS 動態渲染 -->
+      </div>
+    </main>
+
+    <!-- 整合後的完整中文指令預覽區 + 最下方「複製完整中文指令」按鈕 -->
+    <section class="pt-3 border-t border-[var(--card-border)] space-y-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs font-semibold text-[var(--foreground)] flex items-center gap-1.5">
+          ✨ 自動整合完整中文指令
+        </span>
+        <button
+          id="btn-reset-note"
+          type="button"
+          class="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] underline-offset-2 hover:underline"
+        >
+          清空補充欄
+        </button>
+      </div>
+
+      <div class="rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-3">
+        <pre id="prompt-preview" class="whitespace-pre-wrap break-words text-xs sm:text-[13px] leading-relaxed text-[var(--foreground)] font-sans m-0"></pre>
+      </div>
+
+      <button
+        id="btn-copy-prompt"
+        type="button"
+        class="w-full min-h-[48px] px-4 py-3 rounded-xl text-sm font-bold bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-95 active:scale-[0.99] transition shadow-sm flex items-center justify-center gap-2"
+      >
+        📋 複製完整中文指令
+      </button>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // 若在獨立瀏覽器（非 Antigravity 宿主環境）開啟，動態補上高對比語意變數，避免影響宿主原生主題
+      function ensureStandaloneTheme() {
+        const rootStyle = getComputedStyle(document.documentElement);
+        if (rootStyle.getPropertyValue("--foreground").trim()) {
+          return;
+        }
+        const applyStandaloneVars = () => {
+          const isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const s = document.body.style;
+          if (isDark) {
+            s.setProperty("--background", "#0f172a");
+            s.setProperty("--content", "#1e293b");
+            s.setProperty("--card", "#1e293b");
+            s.setProperty("--card-border", "#334155");
+            s.setProperty("--border", "#475569");
+            s.setProperty("--foreground", "#f8fafc");
+            s.setProperty("--muted-foreground", "#94a3b8");
+            s.setProperty("--primary", "#3b82f6");
+            s.setProperty("--primary-foreground", "#ffffff");
+            s.setProperty("--secondary", "#334155");
+            s.setProperty("--secondary-foreground", "#e2e8f0");
+            s.setProperty("--error", "#f87171");
+            s.setProperty("--success", "#34d399");
+            document.documentElement.style.backgroundColor = "#0f172a";
+          } else {
+            s.setProperty("--background", "#f8fafc");
+            s.setProperty("--content", "#f1f5f9");
+            s.setProperty("--card", "#ffffff");
+            s.setProperty("--card-border", "#e2e8f0");
+            s.setProperty("--border", "#cbd5e1");
+            s.setProperty("--foreground", "#0f172a");
+            s.setProperty("--muted-foreground", "#64748b");
+            s.setProperty("--primary", "#2563eb");
+            s.setProperty("--primary-foreground", "#ffffff");
+            s.setProperty("--secondary", "#eff6ff");
+            s.setProperty("--secondary-foreground", "#1e40af");
+            s.setProperty("--error", "#dc2626");
+            s.setProperty("--success", "#059669");
+            document.documentElement.style.backgroundColor = "#f8fafc";
+          }
+          document.body.style.padding = "8px 12px 24px";
+        };
+        applyStandaloneVars();
+        if (window.matchMedia) {
+          window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyStandaloneVars);
+        }
+      }
+
+      // ===== PIN 碼安全驗證機制（非明文雜湊驗證）=====
+      const DEFAULT_PIN_HASH = "ff7df87c658e0619";
+      const PIN_HASH_KEY = "antigravity_console_pin_hash_v1";
+      const PIN_UNLOCK_KEY = "antigravity_console_pin_unlocked_v1";
+
+      function hashPin(pin) {
+        let h1 = 0x811c9dc5;
+        let h2 = 0x9e3779b9;
+        const salt = "ag-console-v1:";
+        const s = salt + String(pin);
+        for (let round = 0; round < 64; round++) {
+          for (let i = 0; i < s.length; i++) {
+            const ch = s.charCodeAt(i) ^ (round * 17);
+            h1 = Math.imul(h1 ^ ch, 0x01000193) >>> 0;
+            h2 = Math.imul(h2 ^ (ch + round), 0x85ebca6b) >>> 0;
+          }
+          h1 = (h1 ^ (h2 >>> 13)) >>> 0;
+          h2 = (h2 ^ (h1 >>> 15)) >>> 0;
+        }
+        return h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+      }
+
+      function getActivePinHash() {
+        try {
+          return localStorage.getItem(PIN_HASH_KEY) || DEFAULT_PIN_HASH;
+        } catch (e) {
+          return DEFAULT_PIN_HASH;
+        }
+      }
+
+      function isRememberedUnlocked() {
+        try {
+          return localStorage.getItem(PIN_UNLOCK_KEY) === getActivePinHash();
+        } catch (e) {
+          return false;
+        }
+      }
+
+      let pinBuffer = "";
+      let isUnlocked = false;
+
+      const elPinGate = document.getElementById("pin-gate");
+      const elApp = document.getElementById("app");
+      const elPinDots = document.getElementById("pin-dots");
+      const elPinError = document.getElementById("pin-error");
+      const elPinKeypad = document.getElementById("pin-keypad");
+      const elPinRemember = document.getElementById("pin-remember");
+
+      function updatePinDots() {
+        const dots = elPinDots.children;
+        for (let i = 0; i < dots.length; i++) {
+          if (i < pinBuffer.length) {
+            dots[i].className = "w-3.5 h-3.5 rounded-full border-2 border-[var(--primary)] bg-[var(--primary)] transition";
+          } else {
+            dots[i].className = "w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] bg-transparent transition";
+          }
+        }
+      }
+
+      function unlockConsole(remember) {
+        isUnlocked = true;
+        if (remember) {
+          try {
+            localStorage.setItem(PIN_UNLOCK_KEY, getActivePinHash());
+          } catch (e) {}
+        }
+        elPinGate.classList.add("hidden");
+        elApp.classList.remove("hidden");
+        pinBuffer = "";
+        updatePinDots();
+      }
+
+      function lockConsole() {
+        isUnlocked = false;
+        try {
+          localStorage.removeItem(PIN_UNLOCK_KEY);
+        } catch (e) {}
+        pinBuffer = "";
+        elPinError.textContent = "";
+        updatePinDots();
+        elApp.classList.add("hidden");
+        elPinGate.classList.remove("hidden");
+      }
+
+      function handlePinDigit(d) {
+        if (isUnlocked || pinBuffer.length >= 4) return;
+        elPinError.textContent = "";
+        pinBuffer += d;
+        updatePinDots();
+
+        if (pinBuffer.length === 4) {
+          const candidateHash = hashPin(pinBuffer);
+          if (candidateHash === getActivePinHash()) {
+            unlockConsole(elPinRemember.checked);
+          } else {
+            elPinError.textContent = "PIN 碼錯誤，請重新輸入";
+            setTimeout(() => {
+              pinBuffer = "";
+              updatePinDots();
+            }, 320);
+          }
+        }
+      }
+
+      function initPinKeypad() {
+        const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "清空", "0", "⌫"];
+        elPinKeypad.innerHTML = "";
+        keys.forEach((k) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          const isNum = /^\d$/.test(k);
+          btn.className = isNum
+            ? "min-h-[48px] rounded-xl border border-[var(--card-border)] bg-[var(--content)] text-[var(--foreground)] text-base font-bold hover:opacity-85 active:scale-[0.96] transition"
+            : "min-h-[48px] rounded-xl border border-[var(--card-border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] text-xs font-semibold hover:opacity-85 active:scale-[0.96] transition";
+          btn.textContent = k;
+          btn.addEventListener("click", () => {
+            if (isNum) {
+              handlePinDigit(k);
+            } else if (k === "清空") {
+              pinBuffer = "";
+              elPinError.textContent = "";
+              updatePinDots();
+            } else if (k === "⌫") {
+              pinBuffer = pinBuffer.slice(0, -1);
+              elPinError.textContent = "";
+              updatePinDots();
+            }
+          });
+          elPinKeypad.appendChild(btn);
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (isUnlocked) return;
+          if (/^\d$/.test(e.key)) {
+            handlePinDigit(e.key);
+          } else if (e.key === "Backspace") {
+            pinBuffer = pinBuffer.slice(0, -1);
+            elPinError.textContent = "";
+            updatePinDots();
+          } else if (e.key === "Escape") {
+            pinBuffer = "";
+            elPinError.textContent = "";
+            updatePinDots();
+          }
+        });
+      }
+
+      const STORAGE_KEY = "antigravity_mobile_prompt_console_v1";
+
+      // 預設五大核心功能模組（資料驅動，可自由修改選項、新增欄位或擴增模組）
+      const DEFAULT_MODULES = [
+        {
+          id: "screenshot_fix",
+          icon: "📸",
+          name: "截圖修復",
+          desc: "去除手機狀態列、浮水印、雜物路人，提升解析度與清晰文字修復",
+          isDefault: true,
+          roomTitle: "📌 [專屬] 📸 截圖修復專家",
+          roomSystemBrief: "請擔任專業影像修復與截圖還原專家。在這個專屬聊天室中，我會上傳圖片並貼上控制台產生的修復指令。請嚴格依照指令執行去雜物、畫質強化、文字清晰化與比例輸出，並確保畫面自然無塗抹痕跡。",
+          notePlaceholder: "例如：抹除右上角電量與時間、保留人物主體、不要改變原本字體",
+          fields: [
+            {
+              id: "shot_type",
+              type: "select",
+              label: "截圖類型",
+              options: [
+                "聊天紀錄",
+                "社群貼文",
+                "風景與人物照片",
+                "文件與簡報翻拍",
+                "電商商品圖",
+                "網頁或系統畫面"
+              ]
+            },
+            {
+              id: "fix_goal",
+              type: "select",
+              label: "首要修復目標",
+              options: [
+                "去除狀態列與浮水印",
+                "消除雜物與路人",
+                "畫質超解析度放大與去模糊",
+                "修復破圖與摩爾紋",
+                "重建裁切邊緣（擴圖）"
+              ]
+            },
+            {
+              id: "text_mode",
+              type: "radio",
+              label: "文字與排版處理",
+              options: [
+                "保留原始文字並強化清晰度",
+                "移除所有介面文字與圖示",
+                "將圖片內文字轉為可編輯繁體中文"
+              ]
+            },
+            {
+              id: "output_ratio",
+              type: "radio",
+              label: "輸出畫質與比例",
+              options: [
+                "維持原圖比例（高畫質修復）",
+                "1:1 社群正方形",
+                "9:16 手機滿版直式",
+                "16:9 橫式寬螢幕"
+              ]
+            }
+          ]
+        },
+        {
+          id: "ai_outfit",
+          icon: "👗",
+          name: "AI 圖片換裝",
+          desc: "保留人物五官與身形，一鍵切換穿搭風格、色系材質與拍攝背景",
+          isDefault: true,
+          roomTitle: "📌 [專屬] 👗 AI 圖片換裝造型師",
+          roomSystemBrief: "請擔任專業 AI 時尚造型與影像合成師。在這個專屬聊天室中，我會提供人物照片並貼上換裝指令。請務必嚴格保持原圖人物的臉部五官、髮型、膚色與身體比例一致，僅依據指定風格與材質自然替換服裝並協調光影。",
+          notePlaceholder: "例如：加上銀色細框眼鏡、手提極簡皮革包、保持原本微笑表情",
+          fields: [
+            {
+              id: "outfit_style",
+              type: "select",
+              label: "服裝風格",
+              options: [
+                "韓系簡約日常",
+                "日系雜誌層次感",
+                "正式商務西裝與套裝",
+                "街頭潮流工裝",
+                "度假海島洋裝與襯衫",
+                "晚宴禮服",
+                "運動機能風"
+              ]
+            },
+            {
+              id: "color_material",
+              type: "select",
+              label: "色系與材質",
+              options: [
+                "大地色系（棉麻質感）",
+                "經典黑白灰（俐落剪裁）",
+                "莫蘭迪柔和色系（針織絲綢）",
+                "高飽和亮色系",
+                "丹寧牛仔材質"
+              ]
+            },
+            {
+              id: "replace_scope",
+              type: "radio",
+              label: "替換範圍",
+              options: [
+                "全身完整換裝（上衣＋下身＋配件）",
+                "僅更換上衣與外套",
+                "僅更換下身（褲裝/裙裝）",
+                "保留服裝僅更換顏色與材質"
+              ]
+            },
+            {
+              id: "bg_lighting",
+              type: "radio",
+              label: "背景與光影設定",
+              options: [
+                "完全保留原圖臉部、姿勢與背景",
+                "保留臉部與姿勢，背景改為純白攝影棚",
+                "保留臉部與姿勢，背景改為城市街拍自然光"
+              ]
+            }
+          ]
+        },
+        {
+          id: "travel_spot",
+          icon: "🌏",
+          name: "旅遊景點搜尋",
+          desc: "依目的地、主題、旅伴與交通方式，挖掘高口碑與私房旅遊景點",
+          isDefault: true,
+          roomTitle: "📌 [專屬] 🌏 旅遊景點搜尋顧問",
+          roomSystemBrief: "請擔任資深在地旅遊探索顧問。在這個專屬聊天室中，我會貼上景點搜尋指令。請針對指定區域與旅伴條件，精選值得造訪的景點（包含私房秘境與避雷提醒），並附上交通方式、建議停留時間與票價資訊。",
+          notePlaceholder: "例如：希望推薦京都嵐山周邊人少好拍的私房景點、11月賞楓",
+          fields: [
+            {
+              id: "destination",
+              type: "select",
+              label: "目的地／區域",
+              options: [
+                "日本（東京／京都／大阪／北海道）",
+                "台灣各縣市深度遊",
+                "韓國（首爾／釜山／濟州島）",
+                "泰國與東南亞海島",
+                "歐洲經典城市",
+                "自訂目的地（於補充欄填寫）"
+              ]
+            },
+            {
+              id: "spot_theme",
+              type: "select",
+              label: "景點主題偏好",
+              options: [
+                "自然秘境與絕美風景",
+                "歷史古蹟與文化建築",
+                "親子友善與互動體驗",
+                "藝術美術館與文青小店",
+                "網美打卡與夜間觀景"
+              ]
+            },
+            {
+              id: "companion",
+              type: "radio",
+              label: "旅伴類型",
+              options: [
+                "情侶／夫妻雙人遊",
+                "親子家庭（含長輩或幼童）",
+                "三五好友團體",
+                "獨旅背包客"
+              ]
+            },
+            {
+              id: "pace_transit",
+              type: "radio",
+              label: "交通與步調",
+              options: [
+                "大眾運輸（地鐵／巴士步行可達）",
+                "自駕遊（需附停車資訊）",
+                "慢活輕鬆不趕路（避開人潮）"
+              ]
+            }
+          ]
+        },
+        {
+          id: "restaurant_finder",
+          icon: "🍜",
+          name: "餐廳探索",
+          desc: "精準篩選料理、預算、用餐情境與避雷條件，整理必點菜單與訂位資訊",
+          isDefault: true,
+          roomTitle: "📌 [專屬] 🍜 美食餐廳探索雷達",
+          roomSystemBrief: "請擔任精通各地口碑美食的餐廳探索專家。在這個專屬聊天室中，我會貼上美食探索指令。請為我精挑符合預算、情境與評價門檻的優質餐廳，列出招牌必點菜色、價位區間、營業時間、訂位方式與真實評價優缺點。",
+          notePlaceholder: "例如：地點在台北中山站步行10分鐘內、不吃牛肉、需要有插座或安靜聊天",
+          fields: [
+            {
+              id: "cuisine",
+              type: "select",
+              label: "料理類型",
+              options: [
+                "在地傳統小吃與老店",
+                "日式料理（拉麵／壽司／居酒屋）",
+                "燒肉與火鍋聚餐",
+                "景觀咖啡廳與精緻甜點",
+                "異國料理（義式／泰式／韓式）",
+                "蔬食與健康料理"
+              ]
+            },
+            {
+              id: "budget",
+              type: "select",
+              label: "人均預算範圍",
+              options: [
+                "銅板美食（NT$200 以內）",
+                "平價日常（NT$200 - 500）",
+                "質感聚餐（NT$500 - 1,200）",
+                "高檔慶生約會（NT$1,200 以上）"
+              ]
+            },
+            {
+              id: "dining_context",
+              type: "radio",
+              label: "用餐情境",
+              options: [
+                "日常快速用餐",
+                "約會氣氛與慶生紀念",
+                "朋友家人多人聚餐",
+                "深夜食堂（宵夜時段）"
+              ]
+            },
+            {
+              id: "filter_rule",
+              type: "radio",
+              label: "篩選與評價條件",
+              options: [
+                "Google 高分且在地人推薦（避開觀光客雷店）",
+                "必比登或米其林指南推薦",
+                "可線上訂位或免排隊名店",
+                "寵物或親子友善空間"
+              ]
+            }
+          ]
+        },
+        {
+          id: "itinerary_planner",
+          icon: "🧳",
+          name: "行程規劃",
+          desc: "自動編排順路動線、每日早中晚時間軸、交通銜接、美食穿插與雨天備案",
+          isDefault: true,
+          roomTitle: "📌 [專屬] 🧳 旅遊行程規劃總監",
+          roomSystemBrief: "請擔任專業旅遊行程規劃總監。在這個專屬聊天室中，我會貼上行程規劃指令。請以「地理動線最順暢、不走回頭路」為核心原則，排出具體的每日早中晚時間軸、移動交通時間、順路餐飲推薦以及雨天備案。",
+          notePlaceholder: "例如：台南三天兩夜，住中西區，早班高鐵抵達、想把美食跟古蹟排順路",
+          fields: [
+            {
+              id: "trip_days",
+              type: "select",
+              label: "旅遊天數",
+              options: [
+                "一日遊精華快閃",
+                "兩天一夜週末小旅行",
+                "三天兩夜深度遊",
+                "五天四夜標準假期",
+                "七天六夜以上長假"
+              ]
+            },
+            {
+              id: "trip_pace",
+              type: "select",
+              label: "行程節奏與密度",
+              options: [
+                "輕鬆漫遊（每天 2-3 個重點，睡到自然醒）",
+                "標準充實（每天 3-4 個順路景點＋美食）",
+                "高效踩點（早出晚歸經典必去全收錄）",
+                "雨天室內備案優先"
+              ]
+            },
+            {
+              id: "transport_mode",
+              type: "radio",
+              label: "主要移動方式",
+              options: [
+                "全程大眾運輸（地鐵／高鐵／公車）",
+                "全程租車自駕",
+                "步行＋計程車／Uber 搭配"
+              ]
+            },
+            {
+              id: "output_format",
+              type: "radio",
+              label: "輸出格式要求",
+              options: [
+                "每日早中晚時間軸表格＋交通銜接時間",
+                "地圖順路動線清單＋預估花費明細",
+                "含行前準備清單與住宿區域建議"
+              ]
+            }
+          ]
+        }
+      ];
+
+      function deepClone(obj) {
+        return JSON.parse(JSON.stringify(obj));
+      }
+
+      // 狀態管理
+      let state = {
+        modules: deepClone(DEFAULT_MODULES),
+        activeModuleId: "screenshot_fix",
+        lockedModuleId: null,
+        selections: {},
+        notes: {}
+      };
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed.modules) && parsed.modules.length > 0) {
+              state.modules = parsed.modules;
+            }
+            if (parsed.activeModuleId) state.activeModuleId = parsed.activeModuleId;
+            if (parsed.lockedModuleId !== undefined) state.lockedModuleId = parsed.lockedModuleId;
+            if (parsed.selections && typeof parsed.selections === "object") state.selections = parsed.selections;
+            if (parsed.notes && typeof parsed.notes === "object") state.notes = parsed.notes;
+          }
+        } catch (e) {}
+
+        // 支援網址參數 ?mode=... 或 #mode=... 以便釘選書籤直接打開指定功能
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const hashMatch = window.location.hash.match(/mode=([a-zA-Z0-9_-]+)/);
+          const requestedMode = urlParams.get("mode") || (hashMatch ? hashMatch[1] : null);
+          if (requestedMode && state.modules.some((m) => m.id === requestedMode)) {
+            state.activeModuleId = requestedMode;
+            state.lockedModuleId = requestedMode;
+          }
+        } catch (e) {}
+
+        ensureSelectionsValid();
+      }
+
+      function saveState() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) {}
+      }
+
+      function ensureSelectionsValid() {
+        if (!state.modules.some((m) => m.id === state.activeModuleId)) {
+          state.activeModuleId = state.modules[0].id;
+        }
+        if (state.lockedModuleId && !state.modules.some((m) => m.id === state.lockedModuleId)) {
+          state.lockedModuleId = null;
+        }
+        state.modules.forEach((mod) => {
+          if (!state.selections[mod.id]) state.selections[mod.id] = {};
+          mod.fields.forEach((f) => {
+            const cur = state.selections[mod.id][f.id];
+            if (!cur || !f.options.includes(cur)) {
+              state.selections[mod.id][f.id] = f.options[0] || "";
+            }
+          });
+          if (typeof state.notes[mod.id] !== "string") {
+            state.notes[mod.id] = "";
+          }
+        });
+      }
+
+      function getActiveModule() {
+        return state.modules.find((m) => m.id === state.activeModuleId) || state.modules[0];
+      }
+
+      // 合成專業完整中文指令
+      function buildPrompt(mod) {
+        const sel = state.selections[mod.id] || {};
+        const note = (state.notes[mod.id] || "").trim();
+
+        const coreIds = new Set();
+        const extraLines = [];
+
+        let mainText = "";
+
+        if (mod.id === "screenshot_fix") {
+          ["shot_type", "fix_goal", "text_mode", "output_ratio"].forEach((k) => coreIds.add(k));
+          const shotType = sel.shot_type || "";
+          const fixGoal = sel.fix_goal || "";
+          const textMode = sel.text_mode || "";
+          const ratio = sel.output_ratio || "";
+
+          mainText = [
+            `【任務指令：📸 專業截圖修復與影像處理】`,
+            `請協助處理我提供的「${shotType}」圖片，並嚴格執行以下修復規格：`,
+            `1. 首要修復目標：${fixGoal}，確保修補區域紋理與周圍背景自然銜接、不留塗抹痕跡。`,
+            `2. 文字與排版處理：${textMode}。`,
+            `3. 輸出畫質與比例：請依「${ratio}」規格輸出，維持銳利清晰的細節、正確對比度與色彩還原。`
+          ].join("\n");
+        } else if (mod.id === "ai_outfit") {
+          ["outfit_style", "color_material", "replace_scope", "bg_lighting"].forEach((k) => coreIds.add(k));
+          const style = sel.outfit_style || "";
+          const colorMat = sel.color_material || "";
+          const scope = sel.replace_scope || "";
+          const bg = sel.bg_lighting || "";
+
+          mainText = [
+            `【任務指令：👗 AI 圖片換裝與造型設計】`,
+            `請根據我提供的原圖人物進行高擬真 AI 換裝，務必嚴格遵守以下條件：`,
+            `1. 人物一致性：精準保留原圖人物的臉部五官特徵、神韻、髮型、膚色與身材比例，不可走樣。`,
+            `2. 替換範圍：${scope}。`,
+            `3. 服裝風格與材質：整體設計採用「${style}」風格，搭配「${colorMat}」，注意布料垂墜感與皺褶細節。`,
+            `4. 背景與光影：${bg}，並自動校準人物與服裝邊緣的光影投射及色溫一致性。`
+          ].join("\n");
+        } else if (mod.id === "travel_spot") {
+          ["destination", "spot_theme", "companion", "pace_transit"].forEach((k) => coreIds.add(k));
+          const dest = sel.destination || "";
+          const theme = sel.spot_theme || "";
+          const comp = sel.companion || "";
+          const pace = sel.pace_transit || "";
+
+          mainText = [
+            `【任務指令：🌏 精選旅遊景點搜尋】`,
+            `請為我規劃與推薦符合以下條件的優質旅遊景點：`,
+            `1. 目的地／區域：${dest}。`,
+            `2. 景點主題偏好：以「${theme}」為主軸，優先挑選口碑佳或具特色的私房景點。`,
+            `3. 旅伴與受眾：適合「${comp}」，請考量該族群的體力、安全與體驗趣味性。`,
+            `4. 交通與步調：${pace}。`,
+            `請針對每個推薦景點提供：亮點特色、建議停留時間、詳細交通／停車資訊、門票與預約提醒，以及實用的避雷小建議。`
+          ].join("\n");
+        } else if (mod.id === "restaurant_finder") {
+          ["cuisine", "budget", "dining_context", "filter_rule"].forEach((k) => coreIds.add(k));
+          const cuisine = sel.cuisine || "";
+          const budget = sel.budget || "";
+          const context = sel.dining_context || "";
+          const filter = sel.filter_rule || "";
+
+          mainText = [
+            `【任務指令：🍜 精準餐廳探索與美食推薦】`,
+            `請依據以下條件，為我精選 5 家最符合期待的餐廳名單：`,
+            `1. 料理類型：${cuisine}。`,
+            `2. 人均預算：${budget}。`,
+            `3. 用餐情境：適合「${context}」。`,
+            `4. 篩選與評價門檻：${filter}。`,
+            `請為每家餐廳條列：店名與所在區域、招牌必點菜色、預估人均消費、營業時間／公休日、訂位建議，以及真實食客評價摘要（優點與需注意的小缺點）。`
+          ].join("\n");
+        } else if (mod.id === "itinerary_planner") {
+          ["trip_days", "trip_pace", "transport_mode", "output_format"].forEach((k) => coreIds.add(k));
+          const days = sel.trip_days || "";
+          const pace = sel.trip_pace || "";
+          const trans = sel.transport_mode || "";
+          const fmt = sel.output_format || "";
+
+          mainText = [
+            `【任務指令：🧳 專屬旅遊行程規劃】`,
+            `請擔任旅遊規劃師，為我設計一份不走回頭路、順暢可執行的完整行程：`,
+            `1. 旅遊天數：${days}。`,
+            `2. 行程節奏：${pace}。`,
+            `3. 主要移動方式：${trans}。`,
+            `4. 輸出格式要求：請以「${fmt}」呈現，確保每日早、中、晚時間軸銜接合理，穿插順路特色美食，並附上彈性調整與雨天備案。`
+          ].join("\n");
+        } else {
+          const roleDesc = mod.roleDesc && mod.roleDesc.trim()
+            ? mod.roleDesc.trim()
+            : `請擔任專業「${mod.name}」顧問，依據以下設定條件為我提供高品質且可直接執行的完整結果：`;
+          const lines = [`【任務指令：${mod.icon} ${mod.name}】`, roleDesc];
+          mod.fields.forEach((f, idx) => {
+            coreIds.add(f.id);
+            lines.push(`${idx + 1}. ${f.label}：${sel[f.id] || ""}`);
+          });
+          mainText = lines.join("\n");
+        }
+
+        mod.fields.forEach((f) => {
+          if (!coreIds.has(f.id)) {
+            extraLines.push(`• ${f.label}：${sel[f.id] || ""}`);
+          }
+        });
+
+        const parts = [mainText];
+        if (extraLines.length > 0) {
+          parts.push(`額外自訂條件：\n${extraLines.join("\n")}`);
+        }
+        if (note) {
+          parts.push(`補充細節與特殊要求：${note}`);
+        }
+        parts.push(`請直接以繁體中文回覆清晰、結構化且可直接採用的具體內容。`);
+
+        return parts.join("\n\n");
+      }
+
+      async function copyTextSafe(text, buttonEl, successLabel, restoreLabel) {
+        let ok = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            ok = true;
+          }
+        } catch (e) {}
+
+        if (!ok) {
+          try {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.top = "-9999px";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+          } catch (e) {}
+        }
+
+        if (buttonEl) {
+          buttonEl.textContent = ok ? successLabel : "⚠️ 複製受限，請長按上方文字全選複製";
+          setTimeout(() => {
+            buttonEl.textContent = restoreLabel;
+          }, 2200);
+        }
+      }
+
+      const elTabsWrap = document.getElementById("module-tabs-wrap");
+      const elTabs = document.getElementById("module-tabs");
+      const elLockIndicator = document.getElementById("lock-indicator");
+      const elActiveTitle = document.getElementById("active-title");
+      const elActiveDesc = document.getElementById("active-desc");
+      const elBtnDeleteCustomMod = document.getElementById("btn-delete-custom-mod");
+      const elControls = document.getElementById("controls-container");
+      const elPreview = document.getElementById("prompt-preview");
+
+      const elSecurityPanel = document.getElementById("security-panel");
+      const elPinPanel = document.getElementById("pin-panel");
+      const elEditPanel = document.getElementById("edit-panel");
+      const elAddModPanel = document.getElementById("add-module-panel");
+
+      function renderTabs() {
+        if (state.lockedModuleId) {
+          elTabsWrap.classList.add("hidden");
+          elLockIndicator.classList.remove("hidden");
+          const lockedMod = getActiveModule();
+          elLockIndicator.textContent = `📌 專屬聊天室模式：${lockedMod.icon} ${lockedMod.name}`;
+        } else {
+          elTabsWrap.classList.remove("hidden");
+          elLockIndicator.classList.add("hidden");
+        }
+
+        elTabs.innerHTML = "";
+        state.modules.forEach((mod) => {
+          const isActive = mod.id === state.activeModuleId;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = [
+            "shrink-0 min-h-[40px] px-3 py-1.5 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5 border",
+            isActive
+              ? "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)] shadow-sm font-semibold"
+              : "bg-[var(--card)] text-[var(--foreground)] border-[var(--card-border)] hover:opacity-85"
+          ].join(" ");
+          btn.textContent = `${mod.icon} ${mod.name}`;
+          btn.addEventListener("click", () => {
+            state.activeModuleId = mod.id;
+            saveState();
+            renderAll();
+          });
+          elTabs.appendChild(btn);
+        });
+      }
+
+      function renderControls() {
+        const mod = getActiveModule();
+        elActiveTitle.textContent = `${mod.icon} ${mod.name}`;
+        elActiveDesc.textContent = mod.desc || "自訂指令產生模組";
+
+        if (!mod.isDefault && state.modules.length > 1) {
+          elBtnDeleteCustomMod.classList.remove("hidden");
+        } else {
+          elBtnDeleteCustomMod.classList.add("hidden");
+        }
+
+        elControls.innerHTML = "";
+
+        const selects = mod.fields.filter((f) => f.type === "select");
+        const radios = mod.fields.filter((f) => f.type === "radio");
+
+        if (selects.length > 0) {
+          const selectGrid = document.createElement("div");
+          selectGrid.className = "grid grid-cols-1 sm:grid-cols-2 gap-2.5";
+          selects.forEach((field) => {
+            const box = document.createElement("div");
+            box.className = "rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-2.5 space-y-1.5";
+
+            const label = document.createElement("label");
+            label.setAttribute("for", `sel-${field.id}`);
+            label.className = "block text-xs font-semibold text-[var(--muted-foreground)]";
+            label.textContent = `▾ ${field.label}`;
+
+            const select = document.createElement("select");
+            select.id = `sel-${field.id}`;
+            select.className = "w-full min-h-[44px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--primary)]";
+
+            field.options.forEach((opt) => {
+              const option = document.createElement("option");
+              option.value = opt;
+              option.textContent = opt;
+              if (state.selections[mod.id][field.id] === opt) {
+                option.selected = true;
+              }
+              select.appendChild(option);
+            });
+
+            select.addEventListener("change", (e) => {
+              state.selections[mod.id][field.id] = e.target.value;
+              saveState();
+              updatePromptPreview();
+            });
+
+            box.appendChild(label);
+            box.appendChild(select);
+            selectGrid.appendChild(box);
+          });
+          elControls.appendChild(selectGrid);
+        }
+
+        if (radios.length > 0) {
+          const radioWrap = document.createElement("div");
+          radioWrap.className = "space-y-2.5";
+
+          radios.forEach((field) => {
+            const card = document.createElement("div");
+            card.className = "rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-2.5 space-y-2";
+
+            const title = document.createElement("div");
+            title.className = "text-xs font-semibold text-[var(--muted-foreground)]";
+            title.textContent = `◉ ${field.label}（單選）`;
+            card.appendChild(title);
+
+            const group = document.createElement("div");
+            group.className = "grid grid-cols-1 sm:grid-cols-2 gap-1.5";
+            group.setAttribute("role", "radiogroup");
+            group.setAttribute("aria-label", field.label);
+
+            field.options.forEach((opt, idx) => {
+              const isChecked = state.selections[mod.id][field.id] === opt;
+              const labelEl = document.createElement("label");
+              labelEl.className = [
+                "min-h-[42px] px-3 py-2 rounded-lg border text-xs sm:text-[13px] cursor-pointer transition flex items-center gap-2 select-none",
+                isChecked
+                  ? "border-[var(--primary)] bg-[var(--secondary)] text-[var(--foreground)] font-semibold"
+                  : "border-[var(--card-border)] bg-[var(--content)] text-[var(--foreground)] hover:opacity-90"
+              ].join(" ");
+
+              const input = document.createElement("input");
+              input.type = "radio";
+              input.name = `radio-${mod.id}-${field.id}`;
+              input.id = `radio-${mod.id}-${field.id}-${idx}`;
+              input.value = opt;
+              input.checked = isChecked;
+              input.className = "sr-only";
+
+              const dot = document.createElement("span");
+              dot.className = [
+                "w-4 h-4 shrink-0 rounded-full border flex items-center justify-center",
+                isChecked
+                  ? "border-[var(--primary)] bg-[var(--primary)]"
+                  : "border-[var(--border)] bg-transparent"
+              ].join(" ");
+
+              if (isChecked) {
+                const innerDot = document.createElement("span");
+                innerDot.className = "w-1.5 h-1.5 rounded-full bg-[var(--primary-foreground)]";
+                dot.appendChild(innerDot);
+              }
+
+              const textSpan = document.createElement("span");
+              textSpan.className = "leading-snug";
+              textSpan.textContent = opt;
+
+              input.addEventListener("change", () => {
+                state.selections[mod.id][field.id] = opt;
+                saveState();
+                renderControls();
+                updatePromptPreview();
+              });
+
+              labelEl.appendChild(input);
+              labelEl.appendChild(dot);
+              labelEl.appendChild(textSpan);
+              group.appendChild(labelEl);
+            });
+
+            card.appendChild(group);
+            radioWrap.appendChild(card);
+          });
+
+          elControls.appendChild(radioWrap);
+        }
+
+        const noteCard = document.createElement("div");
+        noteCard.className = "rounded-xl border border-[var(--card-border)] bg-[var(--card)] p-2.5 space-y-1.5";
+
+        const noteLabel = document.createElement("label");
+        noteLabel.setAttribute("for", "input-note");
+        noteLabel.className = "block text-xs font-semibold text-[var(--muted-foreground)]";
+        noteLabel.textContent = "📝 補充細節／自訂要求（選填）";
+
+        const noteInput = document.createElement("input");
+        noteInput.id = "input-note";
+        noteInput.type = "text";
+        noteInput.value = state.notes[mod.id] || "";
+        noteInput.placeholder = mod.notePlaceholder || "輸入額外條件、地點、排除事項或特殊要求...";
+        noteInput.className = "w-full min-h-[44px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] placeholder:text-[var(--placeholder)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)]";
+
+        noteInput.addEventListener("input", (e) => {
+          state.notes[mod.id] = e.target.value;
+          saveState();
+          updatePromptPreview();
+        });
+
+        noteCard.appendChild(noteLabel);
+        noteCard.appendChild(noteInput);
+        elControls.appendChild(noteCard);
+      }
+
+      function renderPinPanel() {
+        const mod = getActiveModule();
+        const lockBtnLabel = document.getElementById("lock-btn-label");
+        const suggestedRoomName = document.getElementById("suggested-room-name");
+        const roomInitPreview = document.getElementById("room-init-preview");
+
+        if (state.lockedModuleId === mod.id) {
+          lockBtnLabel.textContent = "🔓 解除鎖定（恢復切換全部功能）";
+        } else {
+          lockBtnLabel.textContent = `🔒 鎖定為「${mod.icon} ${mod.name}」專屬畫面`;
+        }
+
+        suggestedRoomName.textContent = mod.roomTitle || `📌 [專屬] ${mod.icon} ${mod.name}`;
+        roomInitPreview.textContent = mod.roomSystemBrief ||
+          `請擔任「${mod.name}」專屬 AI 專家。在本聊天室中，我會使用操作控制台快速產生完整指令貼給你，請直接依指令高品質執行並維持一致的輸出格式。`;
+      }
+
+      function renderEditPanel() {
+        const mod = getActiveModule();
+        document.getElementById("edit-module-name").textContent = `${mod.icon} ${mod.name}`;
+        const list = document.getElementById("edit-fields-list");
+        list.innerHTML = "";
+
+        mod.fields.forEach((field, fieldIdx) => {
+          const item = document.createElement("div");
+          item.className = "rounded-lg border border-[var(--card-border)] bg-[var(--content)] p-2.5 space-y-2";
+
+          const top = document.createElement("div");
+          top.className = "flex items-center justify-between gap-2";
+          const title = document.createElement("span");
+          title.className = "text-xs font-semibold text-[var(--foreground)]";
+          title.textContent = `${field.type === "select" ? "▾ 下拉選單" : "◉ 單選按鈕"}｜${field.label}`;
+          top.appendChild(title);
+
+          if (mod.fields.length > 1) {
+            const delFieldBtn = document.createElement("button");
+            delFieldBtn.type = "button";
+            delFieldBtn.className = "text-xs text-[var(--error)] hover:underline";
+            delFieldBtn.textContent = "刪除此欄位";
+            delFieldBtn.addEventListener("click", () => {
+              mod.fields.splice(fieldIdx, 1);
+              ensureSelectionsValid();
+              saveState();
+              renderAll();
+            });
+            top.appendChild(delFieldBtn);
+          }
+          item.appendChild(top);
+
+          const tags = document.createElement("div");
+          tags.className = "flex flex-wrap gap-1.5";
+          field.options.forEach((opt, optIdx) => {
+            const chip = document.createElement("span");
+            chip.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-[var(--card)] border border-[var(--card-border)] text-[var(--foreground)]";
+            const txt = document.createElement("span");
+            txt.textContent = opt;
+            chip.appendChild(txt);
+
+            if (field.options.length > 1) {
+              const rm = document.createElement("button");
+              rm.type = "button";
+              rm.className = "text-[var(--muted-foreground)] hover:text-[var(--error)] font-bold pl-0.5";
+              rm.textContent = "×";
+              rm.title = "移除此選項";
+              rm.addEventListener("click", () => {
+                field.options.splice(optIdx, 1);
+                ensureSelectionsValid();
+                saveState();
+                renderAll();
+              });
+              chip.appendChild(rm);
+            }
+            tags.appendChild(chip);
+          });
+          item.appendChild(tags);
+
+          const addRow = document.createElement("div");
+          addRow.className = "flex items-center gap-1.5";
+          const addInput = document.createElement("input");
+          addInput.type = "text";
+          addInput.placeholder = `新增「${field.label}」選項...`;
+          addInput.className = "flex-1 min-h-[36px] rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] px-2.5 py-1 text-xs";
+
+          const addBtn = document.createElement("button");
+          addBtn.type = "button";
+          addBtn.className = "min-h-[36px] px-3 py-1 rounded-lg text-xs font-semibold bg-[var(--secondary)] text-[var(--secondary-foreground)] border border-[var(--card-border)] shrink-0";
+          addBtn.textContent = "＋ 新增";
+
+          const submitNewOpt = () => {
+            const val = addInput.value.trim();
+            if (!val) return;
+            if (!field.options.includes(val)) {
+              field.options.push(val);
+              state.selections[mod.id][field.id] = val;
+              saveState();
+              renderAll();
+            }
+          };
+
+          addBtn.addEventListener("click", submitNewOpt);
+          addInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submitNewOpt();
+            }
+          });
+
+          addRow.appendChild(addInput);
+          addRow.appendChild(addBtn);
+          item.appendChild(addRow);
+
+          list.appendChild(item);
+        });
+      }
+
+      function updatePromptPreview() {
+        const mod = getActiveModule();
+        elPreview.textContent = buildPrompt(mod);
+      }
+
+      function renderAll() {
+        renderTabs();
+        renderControls();
+        renderPinPanel();
+        renderEditPanel();
+        updatePromptPreview();
+      }
+
+      function bindEvents() {
+        const togglePanel = (panelToShow) => {
+          [elSecurityPanel, elPinPanel, elEditPanel, elAddModPanel].forEach((p) => {
+            if (p === panelToShow) {
+              p.classList.toggle("hidden");
+            } else {
+              p.classList.add("hidden");
+            }
+          });
+        };
+
+        // PIN 安全面板事件
+        const elSecurityMsg = document.getElementById("security-msg");
+        document.getElementById("btn-toggle-security").addEventListener("click", () => {
+          elSecurityMsg.textContent = "";
+          togglePanel(elSecurityPanel);
+        });
+        document.getElementById("btn-close-security").addEventListener("click", () => elSecurityPanel.classList.add("hidden"));
+
+        document.getElementById("btn-lock-now").addEventListener("click", () => {
+          elSecurityPanel.classList.add("hidden");
+          lockConsole();
+        });
+
+        document.getElementById("btn-reset-default-pin").addEventListener("click", () => {
+          try {
+            localStorage.removeItem(PIN_HASH_KEY);
+            localStorage.setItem(PIN_UNLOCK_KEY, DEFAULT_PIN_HASH);
+          } catch (e) {}
+          elSecurityMsg.textContent = "✅ 已恢復為初始預設 PIN 碼！";
+        });
+
+        document.getElementById("btn-save-pin").addEventListener("click", () => {
+          const inputEl = document.getElementById("new-pin-input");
+          const val = inputEl.value.trim();
+          if (!/^\d{4}$/.test(val)) {
+            elSecurityMsg.textContent = "⚠️ 請輸入剛好 4 位數的純數字 PIN 碼。";
+            return;
+          }
+          const newHash = hashPin(val);
+          try {
+            localStorage.setItem(PIN_HASH_KEY, newHash);
+            if (localStorage.getItem(PIN_UNLOCK_KEY)) {
+              localStorage.setItem(PIN_UNLOCK_KEY, newHash);
+            }
+          } catch (e) {}
+          inputEl.value = "";
+          elSecurityMsg.textContent = "✅ 已更新這支手機的專屬 PIN 碼！";
+        });
+
+        document.getElementById("btn-toggle-pin").addEventListener("click", () => {
+          renderPinPanel();
+          togglePanel(elPinPanel);
+        });
+        document.getElementById("btn-close-pin").addEventListener("click", () => elPinPanel.classList.add("hidden"));
+
+        document.getElementById("btn-toggle-edit").addEventListener("click", () => {
+          renderEditPanel();
+          togglePanel(elEditPanel);
+        });
+        document.getElementById("btn-close-edit").addEventListener("click", () => elEditPanel.classList.add("hidden"));
+
+        document.getElementById("btn-toggle-add-module").addEventListener("click", () => {
+          togglePanel(elAddModPanel);
+        });
+        document.getElementById("btn-close-add-module").addEventListener("click", () => elAddModPanel.classList.add("hidden"));
+
+        document.getElementById("btn-lock-current").addEventListener("click", () => {
+          const mod = getActiveModule();
+          state.lockedModuleId = state.lockedModuleId === mod.id ? null : mod.id;
+          saveState();
+          renderAll();
+        });
+
+        document.getElementById("btn-copy-room-init").addEventListener("click", function () {
+          const mod = getActiveModule();
+          const roomName = mod.roomTitle || `📌 [專屬] ${mod.icon} ${mod.name}`;
+          const brief = mod.roomSystemBrief ||
+            `請擔任「${mod.name}」專屬 AI 專家。在本聊天室中，我會貼上控制台產生的指令，請直接依規格提供高品質結果。`;
+          const fullInit = `【專屬聊天室開局設定｜建議釘選名稱：${roomName}】\n\n${brief}\n\n收到後請簡短回覆「✅ ${mod.icon} ${mod.name}專屬聊天室已就緒，請貼上您的操作指令！」，並等待我傳送第一筆控制台指令。`;
+          copyTextSafe(fullInit, this, "✅ 已複製開局設定指令！", "📋 複製此聊天室「開局設定指令」");
+        });
+
+        document.getElementById("btn-add-field").addEventListener("click", () => {
+          const type = document.getElementById("new-field-type").value;
+          const label = document.getElementById("new-field-label").value.trim();
+          const rawOpts = document.getElementById("new-field-options").value.trim();
+          if (!label || !rawOpts) return;
+
+          const options = rawOpts.split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
+          if (options.length === 0) return;
+
+          const mod = getActiveModule();
+          const newId = `custom_field_${Date.now()}`;
+          mod.fields.push({ id: newId, type, label, options });
+          state.selections[mod.id][newId] = options[0];
+
+          document.getElementById("new-field-label").value = "";
+          document.getElementById("new-field-options").value = "";
+          saveState();
+          renderAll();
+        });
+
+        function parseLabelAndOptions(raw, fallbackLabel, fallbackOpts) {
+          const parts = raw.split(/[:：]/);
+          if (parts.length >= 2) {
+            const label = parts[0].trim() || fallbackLabel;
+            const opts = parts.slice(1).join("：").split(/[,，、]/).map((s) => s.trim()).filter(Boolean);
+            return { label, options: opts.length > 0 ? opts : fallbackOpts };
+          }
+          return { label: fallbackLabel, options: fallbackOpts };
+        }
+
+        document.getElementById("btn-create-module").addEventListener("click", () => {
+          const errEl = document.getElementById("add-mod-error");
+          const icon = document.getElementById("new-mod-icon").value.trim() || "✨";
+          const name = document.getElementById("new-mod-name").value.trim();
+          if (!name) {
+            errEl.textContent = "請填寫功能名稱！";
+            return;
+          }
+          errEl.textContent = "";
+
+          const s1 = parseLabelAndOptions(document.getElementById("new-mod-select1").value, "目標風格", ["專業精準", "創意活潑"]);
+          const s2 = parseLabelAndOptions(document.getElementById("new-mod-select2").value, "輸出篇幅", ["精簡重點", "完整詳盡"]);
+          const r1 = parseLabelAndOptions(document.getElementById("new-mod-radio1").value, "呈現格式", ["條列式清單", "完整段落"]);
+          const r2 = parseLabelAndOptions(document.getElementById("new-mod-radio2").value, "語言設定", ["繁體中文（台灣用語）", "中英雙語"]);
+          const roleDesc = document.getElementById("new-mod-role").value.trim();
+
+          const id = `custom_mod_${Date.now()}`;
+          const newMod = {
+            id,
+            icon,
+            name,
+            desc: roleDesc || `自訂擴增功能模組：${name}`,
+            isDefault: false,
+            roleDesc,
+            roomTitle: `📌 [專屬] ${icon} ${name}`,
+            roomSystemBrief: roleDesc || `請擔任「${name}」專屬 AI 專家，依據我貼上的控制台參數直接提供完整解決方案。`,
+            notePlaceholder: `輸入「${name}」的補充細節或特殊要求...`,
+            fields: [
+              { id: `${id}_s1`, type: "select", label: s1.label, options: s1.options },
+              { id: `${id}_s2`, type: "select", label: s2.label, options: s2.options },
+              { id: `${id}_r1`, type: "radio", label: r1.label, options: r1.options },
+              { id: `${id}_r2`, type: "radio", label: r2.label, options: r2.options }
+            ]
+          };
+
+          state.modules.push(newMod);
+          state.activeModuleId = id;
+          state.lockedModuleId = null;
+          ensureSelectionsValid();
+          saveState();
+
+          document.getElementById("new-mod-name").value = "";
+          document.getElementById("new-mod-role").value = "";
+          elAddModPanel.classList.add("hidden");
+          renderAll();
+        });
+
+        elBtnDeleteCustomMod.addEventListener("click", () => {
+          const mod = getActiveModule();
+          if (mod.isDefault || state.modules.length <= 1) return;
+          state.modules = state.modules.filter((m) => m.id !== mod.id);
+          state.activeModuleId = state.modules[0].id;
+          if (state.lockedModuleId === mod.id) state.lockedModuleId = null;
+          ensureSelectionsValid();
+          saveState();
+          renderAll();
+        });
+
+        const resetAsk = document.getElementById("btn-reset-confirm-ask");
+        const resetBox = document.getElementById("reset-confirm-box");
+        resetAsk.addEventListener("click", () => resetBox.classList.toggle("hidden"));
+        document.getElementById("btn-reset-no").addEventListener("click", () => resetBox.classList.add("hidden"));
+        document.getElementById("btn-reset-yes").addEventListener("click", () => {
+          state = {
+            modules: deepClone(DEFAULT_MODULES),
+            activeModuleId: "screenshot_fix",
+            lockedModuleId: null,
+            selections: {},
+            notes: {}
+          };
+          ensureSelectionsValid();
+          saveState();
+          resetBox.classList.add("hidden");
+          renderAll();
+        });
+
+        const jsonBox = document.getElementById("json-io-box");
+        const jsonText = document.getElementById("json-io-text");
+        const jsonMsg = document.getElementById("json-io-msg");
+
+        document.getElementById("btn-export-json").addEventListener("click", () => {
+          jsonBox.classList.remove("hidden");
+          jsonText.value = JSON.stringify({ modules: state.modules }, null, 2);
+          jsonMsg.textContent = "已產出目前設定 JSON，可全選複製備份。";
+        });
+        document.getElementById("btn-toggle-import").addEventListener("click", () => {
+          jsonBox.classList.toggle("hidden");
+          jsonMsg.textContent = "";
+        });
+        document.getElementById("btn-apply-import").addEventListener("click", () => {
+          try {
+            const parsed = JSON.parse(jsonText.value);
+            if (!parsed.modules || !Array.isArray(parsed.modules) || parsed.modules.length === 0) {
+              jsonMsg.textContent = "❌ JSON 格式不正確（缺少 modules 陣列）。";
+              return;
+            }
+            state.modules = parsed.modules;
+            ensureSelectionsValid();
+            saveState();
+            renderAll();
+            jsonMsg.textContent = "✅ 已成功匯入設定！";
+          } catch (e) {
+            jsonMsg.textContent = "❌ JSON 解析失敗，請確認格式。";
+          }
+        });
+
+        document.getElementById("btn-reset-note").addEventListener("click", () => {
+          const mod = getActiveModule();
+          state.notes[mod.id] = "";
+          saveState();
+          const noteEl = document.getElementById("input-note");
+          if (noteEl) noteEl.value = "";
+          updatePromptPreview();
+        });
+
+        document.getElementById("btn-copy-prompt").addEventListener("click", function () {
+          const mod = getActiveModule();
+          const fullPrompt = buildPrompt(mod);
+          copyTextSafe(fullPrompt, this, "✅ 已複製完整中文指令！", "📋 複製完整中文指令");
+        });
+      }
+
+      // 初始化啟動
+      ensureStandaloneTheme();
+      initPinKeypad();
+      loadState();
+      bindEvents();
+      renderAll();
+
+      if (isRememberedUnlocked()) {
+        unlockConsole(true);
+      }
+    })();
+  </script>
+</body>
+</html>
