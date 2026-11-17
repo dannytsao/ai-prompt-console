@@ -36,11 +36,13 @@
       <div class="space-y-1">
         <div class="text-2xl">🔐</div>
         <h1 class="text-base font-bold text-[var(--foreground)]">專屬操作控制台已鎖定</h1>
-        <p class="text-xs text-[var(--muted-foreground)]">請輸入 4 位數專屬 PIN 碼解鎖使用</p>
+        <p class="text-xs text-[var(--muted-foreground)]">請輸入 6 位數專屬 PIN 碼解鎖使用</p>
       </div>
 
-      <!-- 4 位數圓點指示器 -->
-      <div id="pin-dots" class="flex items-center justify-center gap-3 py-1" aria-label="PIN 碼輸入進度">
+      <!-- 6 位數圓點指示器 -->
+      <div id="pin-dots" class="flex items-center justify-center gap-2.5 py-1" aria-label="PIN 碼輸入進度">
+        <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
+        <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
         <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
         <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
         <span class="w-3.5 h-3.5 rounded-full border-2 border-[var(--border)] transition"></span>
@@ -138,9 +140,9 @@
           id="new-pin-input"
           type="password"
           inputmode="numeric"
-          maxlength="4"
+          maxlength="6"
           pattern="[0-9]*"
-          placeholder="輸入新的 4 位數字 PIN 碼"
+          placeholder="輸入新的 6 位數字 PIN 碼"
           class="flex-1 min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--content)] text-[var(--foreground)] px-3 py-1.5 text-sm tracking-widest"
         />
         <button
@@ -407,9 +409,9 @@
       }
 
       // ===== PIN 碼安全驗證機制（非明文雜湊驗證）=====
-      const DEFAULT_PIN_HASH = "ff7df87c658e0619";
-      const PIN_HASH_KEY = "antigravity_console_pin_hash_v1";
-      const PIN_UNLOCK_KEY = "antigravity_console_pin_unlocked_v1";
+      const DEFAULT_PIN_HASH = "41260fe0c64c07d0";
+      const PIN_HASH_KEY = "antigravity_console_pin_hash_v2";
+      const PIN_UNLOCK_KEY = "antigravity_console_pin_unlocked_v2";
 
       function hashPin(pin) {
         let h1 = 0x811c9dc5;
@@ -491,12 +493,12 @@
       }
 
       function handlePinDigit(d) {
-        if (isUnlocked || pinBuffer.length >= 4) return;
+        if (isUnlocked || pinBuffer.length >= 6) return;
         elPinError.textContent = "";
         pinBuffer += d;
         updatePinDots();
 
-        if (pinBuffer.length === 4) {
+        if (pinBuffer.length === 6) {
           const candidateHash = hashPin(pinBuffer);
           if (candidateHash === getActivePinHash()) {
             unlockConsole(elPinRemember.checked);
@@ -1433,8 +1435,8 @@
         document.getElementById("btn-save-pin").addEventListener("click", () => {
           const inputEl = document.getElementById("new-pin-input");
           const val = inputEl.value.trim();
-          if (!/^\d{4}$/.test(val)) {
-            elSecurityMsg.textContent = "⚠️ 請輸入剛好 4 位數的純數字 PIN 碼。";
+          if (!/^\d{6}$/.test(val)) {
+            elSecurityMsg.textContent = "⚠️ 請輸入剛好 6 位數的純數字 PIN 碼。";
             return;
           }
           const newHash = hashPin(val);
